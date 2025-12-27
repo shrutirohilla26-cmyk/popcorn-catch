@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Popcorn Catch - Modern</title>
+<style>
+body { margin:0; overflow:hidden; background:#111; font-family:'Comic Sans MS', cursive, sans-serif;}
+canvas { display:block; margin:0 auto; cursor:pointer; }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas" width="500" height="600"></canvas>
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// Bucket
+const bucket = { x: canvas.width/2-60, y: canvas.height-80, width:120, height:60, bounce:0 };
+let dragging=false;
+canvas.addEventListener('mousedown', e=>{
+  const rect=canvas.getBoundingClientRect();
+  const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+  if(mx>=bucket.x && mx<=bucket.x+bucket.width && my>=bucket.y && my<=bucket.y+bucket.height) dragging=true;
+});
+canvas.addEventListener('mousemove', e=>{
+  if(dragging){
+    const rect=canvas.getBoundingClientRect();
+    bucket.x=e.clientX-rect.left-bucket.width/2;
+    if(bucket.x<0) bucket.x=0;
+    if(bucket.x+bucket.width>canvas.width) bucket.x=canvas.width-bucket.width;
+  }
+});
+canvas.addEventListener('mouseup',()=>dragging=false);
+canvas.addEventListener('mouseleave',()=>dragging=false);
+
+// Popcorn kernels
+const kernels=[];
+const kernelWidth=25, kernelHeight=25;
+let spawnInterval=1000, lastSpawn=Date.now();
+let score=0, speedMultiplier=1.5, gameOver=false;
+
+// Particles
+const particles=[];
+
+// Background elements (bokeh/light blobs)
+const bgElements = [];
+for(let i=0;i<40;i++){
+  bgElements.push({
+    x: Math.random()*canvas.width,
+    y: Math.random()*canvas.height,
+    r: 5+Math.random()*15,
+    vx: (Math.random()-0.5)*0.3,
+    vy: (Math.random()-0.2)*0.5,
+    alpha: 0.3+Math.random()*0.7,
+    color: `hsl(${Math.random()*360},70%,70%)`
+  });
+}
+
+function randomPastel() {
+  const r=200+Math.random()*55, g=180+Math.random()*75, b=50+Math.random()*100;
+  return `rgb(${r},${g},${b})`;
+}
+
+function spawnKernel(){
+  const x=Math.random()*(canvas.width-kernelWidth);
+  const speed=(2+Math.random()*2)*speedMultiplier;
+  const color=randomPastel();
+  const rotation=Math.random()*Math.PI*2;
+  const rotSpeed=(Math.random()-0.5)*0.05;
+  kernels.push({x,y:0,speed,color,rotation,rotSpeed});
+}
+
+function spawnParticles(x,y){
+  for(let i=0;i<10;i++){
+    const angle=Math.random()*Math.PI*2;
+    const speed=Math.random()*3+1;
+    const size=Math.random()*4+2;
+    particles.push({x,y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,life:30,size,color:'#fff'});
+  }
+}
+
+function update(){
+  if(gameOver) return;
+
+  // Spawn kernels
+  if(Date.now()-lastSpawn>spawnInterval){ spawnKernel(); lastSpawn=Date.now(); }
+
+  // Move kernels
+  for(let i=kernels.length-1;i>=0;i--){
+    const k=kernels[i];
+    k.y+=k.speed;
+    k.rotation+=k.rotSpeed;
+
+    // Catch
+    if(k.y+kernelHeight>bucket.y && k.x+kernelWidth>bucket.x && k.x<bucket.x+bucket.width){
+      score++;
+      spawnParticles(k.x+kernelWidth/2,k.y+kernelHeight/2);
+      kernels.splice(i,1);
+      bucket.bounce=5; // bounce
+      if(score%5===0){ spawnInterval=Math.max(400, spawnInterval-100); speedMultiplier+=0.1; }
+    } else if(k.y>canvas.height){ gameOver=true; }
+  }
+
+  // Move particles
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx; p.y+=p.vy; p.life--;
+    if(p.life<=0) particles.splice(i,1);
+  }
+
+  if(bucket.bounce>0) bucket.bounce-=0.5;
+
+  // Move background elements
+  bgElements.forEach(e=>{
+    e.x+=e.vx; e.y+=e.vy;
+    if(e.x-e.r>canvas.width) e.x=-e.r;
+    if(e.x+e.r<0) e.x=canvas.width+e.r;
+    if(e.y-e.r>canvas.height) e.y=-e.r;
+    if(e.y+e.r<0) e.y=canvas.height+e.r;
+  });
+}
+
+// Draw everything
+function drawBackground(){
+  // Cinematic gradient
+  const grad=ctx.createLinearGradient(0,0,0,canvas.height);
+  grad.addColorStop(0,'#FFBB88');
+  grad.addColorStop(1,'#662266');
+  ctx.fillStyle=grad; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // Floating bokeh/light blobs
+  bgElements.forEach(e=>{
+    ctx.globalAlpha = e.alpha;
+    ctx.fillStyle = e.color;
+    ctx.beginPath();
+    ctx.arc(e.x,e.y,e.r,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+  });
+}
+
+function drawBucket(){
+  const b=bucket;
+  ctx.save();
+  ctx.translate(b.x+b.width/2,b.y+b.height/2 - b.bounce);
+  const grad=ctx.createLinearGradient(-b.width/2,-b.height/2,b.width/2,b.height/2);
+  grad.addColorStop(0,'#FF6347'); grad.addColorStop(1,'#FF0000');
+  ctx.fillStyle=grad;
+  ctx.beginPath();
+  ctx.moveTo(-b.width/2,-b.height/2);
+  ctx.lineTo(b.width/2,-b.height/2);
+  ctx.lineTo(b.width/2-15,b.height/2);
+  ctx.lineTo(-b.width/2+15,b.height/2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke();
+  ctx.restore();
+}
+
+function drawKernel(k){
+  ctx.save();
+  ctx.translate(k.x+kernelWidth/2,k.y+kernelHeight/2);
+  ctx.rotate(k.rotation);
+  const grad=ctx.createRadialGradient(0,0,kernelWidth/4,0,0,kernelWidth/2);
+  grad.addColorStop(0,'#fff8dc'); grad.addColorStop(1,k.color);
+  ctx.fillStyle=grad;
+  ctx.beginPath();
+  ctx.ellipse(0,0,kernelWidth/2,kernelHeight/2,0,0,Math.PI*2);
+  ctx.fill();
+  ctx.strokeStyle='#FFD700'; ctx.stroke();
+  ctx.restore();
+}
+
+function drawParticles(){
+  particles.forEach(p=>{
+    ctx.fillStyle=p.color; ctx.beginPath();
+    ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill();
+  });
+}
+
+function drawScore(){
+  ctx.fillStyle='rgba(255,255,255,0.9)'; ctx.fillRect(10,10,180,40);
+  ctx.fillStyle='#ff0044'; ctx.font='20px Comic Sans MS';
+  ctx.fillText('Popcorn: '+score,15,35);
+}
+
+function drawGameOver(){
+  ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle='#ff0044'; ctx.font='50px Comic Sans MS';
+  ctx.fillText('Game Over!',90,canvas.height/2);
+  ctx.font='25px Comic Sans MS';
+  ctx.fillText('Refresh to Restart',130,canvas.height/2+50);
+}
+
+function draw(){
+  drawBackground();
+  kernels.forEach(drawKernel);
+  drawParticles();
+  drawBucket();
+  drawScore();
+  if(gameOver) drawGameOver();
+}
+
+function gameLoop(){ update(); draw(); if(!gameOver) requestAnimationFrame(gameLoop); }
+gameLoop();
+</script>
+</body>
+</html>
